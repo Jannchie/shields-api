@@ -222,7 +222,6 @@ async fn root() -> Json<ApiInfo> {
     components(schemas(EndpointParams, ApiInfo, DocsInfo)),
     info(
         title = "Shields API",
-        version = "0.1.0",
         description = "API for generating shield badges compatible with shields.io"
     )
 )]
