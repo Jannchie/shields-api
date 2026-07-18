@@ -156,7 +156,7 @@ async fn endpoint_badge(
         return Ok(Response::builder()
             .status(200)
             .header("content-type", "image/svg+xml")
-            .header("cache-control", "max-age=300, must-revalidate")
+            .header("cache-control", "no-cache, no-store, must-revalidate")
             .body(svg_content)
             .unwrap());
     }
