@@ -1,4 +1,4 @@
-use axum::{Router, extract::Query, http::StatusCode, response::Response, routing::get};
+use axum::{Json, Router, extract::Query, http::StatusCode, response::Response, routing::get};
 use serde::{Deserialize, Serialize};
 use shields::{BadgeStyle, builder::Badge};
 use tokio;
@@ -41,7 +41,7 @@ struct ShieldsSchema {
     style: Option<String>,
 }
 
-fn create_badge_with_style(style: Option<&str>) -> shields::builder::BadgeBuilder {
+fn create_badge_with_style(style: Option<&str>) -> shields::builder::BadgeBuilder<'_> {
     match style {
         Some("plastic") => Badge::style(BadgeStyle::Plastic),
         Some("flat-square") => Badge::style(BadgeStyle::FlatSquare),
@@ -180,10 +180,46 @@ async fn fetch_json_data(url: &str) -> Result<serde_json::Value, Box<dyn std::er
     Ok(json)
 }
 
+#[derive(Serialize, ToSchema)]
+struct DocsInfo {
+    /// Interactive API documentation (Scalar UI)
+    ui: &'static str,
+    /// OpenAPI specification in JSON format
+    openapi: &'static str,
+}
+
+#[derive(Serialize, ToSchema)]
+struct ApiInfo {
+    name: &'static str,
+    /// API version
+    version: &'static str,
+    /// Version of the shields.rs crate used for badge rendering
+    shields_version: &'static str,
+    docs: DocsInfo,
+}
+
+#[utoipa::path(
+    get,
+    path = "/",
+    tag = "Meta",
+    responses((status = 200, description = "API version and documentation index", body = ApiInfo))
+)]
+async fn root() -> Json<ApiInfo> {
+    Json(ApiInfo {
+        name: env!("CARGO_PKG_NAME"),
+        version: env!("CARGO_PKG_VERSION"),
+        shields_version: env!("SHIELDS_CRATE_VERSION"),
+        docs: DocsInfo {
+            ui: "/docs",
+            openapi: "/openapi.json",
+        },
+    })
+}
+
 #[derive(OpenApi)]
 #[openapi(
-    paths(crate::endpoint_badge),
-    components(schemas(EndpointParams)),
+    paths(crate::endpoint_badge, crate::root),
+    components(schemas(EndpointParams, ApiInfo, DocsInfo)),
     info(
         title = "Shields API",
         version = "0.1.0",
@@ -209,7 +245,11 @@ async fn main() {
 
     let app = Router::new()
         .route("/endpoint", get(endpoint_badge))
-        .route("/", get(|| async { "Shields API Server" }))
+        .route("/", get(root))
+        .route(
+            "/openapi.json",
+            get(|| async { Json(ApiDoc::openapi()) }),
+        )
         .merge(Scalar::with_url("/docs", ApiDoc::openapi()));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1581").await.unwrap();
