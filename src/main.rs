@@ -224,12 +224,20 @@ async fn root() -> Json<ApiInfo> {
         title = "Shields API",
         version = "0.1.0",
         description = "API for generating shield badges compatible with shields.io"
-    ),
-    servers(
-        (url = "http://localhost:1581", description = "Local development server"),
     )
 )]
 struct ApiDoc;
+
+const DEFAULT_BASE_URL: &str = "http://localhost:1581";
+
+/// Build the OpenAPI document with the server URL taken from the
+/// BASE_URL environment variable (falls back to the local address).
+fn build_openapi() -> utoipa::openapi::OpenApi {
+    let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+    let mut doc = ApiDoc::openapi();
+    doc.servers = Some(vec![utoipa::openapi::Server::new(base_url)]);
+    doc
+}
 
 #[tokio::main]
 async fn main() {
@@ -243,14 +251,16 @@ async fn main() {
 
     info!("Starting Shields API Server");
 
+    let openapi = build_openapi();
+
     let app = Router::new()
         .route("/endpoint", get(endpoint_badge))
         .route("/", get(root))
-        .route(
-            "/openapi.json",
-            get(|| async { Json(ApiDoc::openapi()) }),
-        )
-        .merge(Scalar::with_url("/docs", ApiDoc::openapi()));
+        .route("/openapi.json", {
+            let doc = openapi.clone();
+            get(move || async move { Json(doc) })
+        })
+        .merge(Scalar::with_url("/docs", openapi));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1581").await.unwrap();
 
