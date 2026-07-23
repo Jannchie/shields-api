@@ -1,7 +1,9 @@
+mod render;
+mod services;
+
 use axum::{Json, Router, extract::Query, http::StatusCode, response::Response, routing::get};
+use services::{codeberg, crates_io, github, npm, pypi, statik};
 use serde::{Deserialize, Serialize};
-use shields::{BadgeStyle, builder::Badge};
-use tokio;
 use tracing::{error, info};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_scalar::{Scalar, Servable};
@@ -41,19 +43,9 @@ struct ShieldsSchema {
     style: Option<String>,
 }
 
-fn create_badge_with_style(style: Option<&str>) -> shields::builder::BadgeBuilder<'_> {
-    match style {
-        Some("plastic") => Badge::style(BadgeStyle::Plastic),
-        Some("flat-square") => Badge::style(BadgeStyle::FlatSquare),
-        Some("social") => Badge::style(BadgeStyle::Social),
-        Some("for-the-badge") => Badge::style(BadgeStyle::ForTheBadge),
-        _ => Badge::style(BadgeStyle::Flat),
-    }
-}
-
 impl ShieldsSchema {
     fn to_badge_svg(&self) -> String {
-        let mut badge = create_badge_with_style(self.style.as_deref());
+        let mut badge = render::builder_for_style(self.style.as_deref());
 
         badge.label(&self.label).message(&self.message);
 
@@ -79,7 +71,7 @@ impl ShieldsSchema {
             badge.logo_color(logo_color);
         }
 
-        badge.build().to_string()
+        badge.build()
     }
 }
 
@@ -153,12 +145,10 @@ async fn endpoint_badge(
 
         info!("Badge generated successfully");
 
-        return Ok(Response::builder()
-            .status(200)
-            .header("content-type", "image/svg+xml")
-            .header("cache-control", "no-cache, no-store, must-revalidate")
-            .body(svg_content)
-            .unwrap());
+        return Ok(render::svg_response(
+            svg_content,
+            "no-cache, no-store, must-revalidate",
+        ));
     }
 
     // If not a Shields.io schema, report an error
@@ -168,7 +158,7 @@ async fn endpoint_badge(
 
 async fn fetch_json_data(url: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     info!("Fetching data from URL: {}", url);
-    let response = reqwest::get(url).await?;
+    let response = services::http().get(url).send().await?;
     let status = response.status();
     info!("HTTP response status: {}", status);
 
@@ -218,7 +208,39 @@ async fn root() -> Json<ApiInfo> {
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(crate::endpoint_badge, crate::root),
+    paths(
+        crate::endpoint_badge,
+        crate::root,
+        statik::badge,
+        statik::badge_with_color,
+        github::release,
+        github::issues,
+        github::open_issues,
+        github::closed_issues,
+        github::checks,
+        github::checks_branch,
+        github::checks_specific,
+        github::contributors,
+        github::license,
+        codeberg::release,
+        codeberg::issues,
+        codeberg::open_issues,
+        codeberg::closed_issues,
+        codeberg::stars,
+        crates_io::name,
+        crates_io::version,
+        crates_io::info,
+        crates_io::downloads,
+        crates_io::downloads_latest,
+        npm::name,
+        npm::version,
+        npm::license,
+        npm::types,
+        pypi::name,
+        pypi::version,
+        pypi::info,
+        pypi::license,
+    ),
     components(schemas(EndpointParams, ApiInfo, DocsInfo)),
     info(
         title = "Shields API",
@@ -227,12 +249,11 @@ async fn root() -> Json<ApiInfo> {
 )]
 struct ApiDoc;
 
-const DEFAULT_BASE_URL: &str = "http://localhost:1581";
-
 /// Build the OpenAPI document with the server URL taken from the
 /// BASE_URL environment variable (falls back to the local address).
-fn build_openapi() -> utoipa::openapi::OpenApi {
-    let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+fn build_openapi(port: u16) -> utoipa::openapi::OpenApi {
+    let base_url =
+        std::env::var("BASE_URL").unwrap_or_else(|_| format!("http://localhost:{port}"));
     let mut doc = ApiDoc::openapi();
     doc.servers = Some(vec![utoipa::openapi::Server::new(base_url)]);
     doc
@@ -250,20 +271,76 @@ async fn main() {
 
     info!("Starting Shields API Server");
 
-    let openapi = build_openapi();
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(1581);
+    let openapi = build_openapi(port);
 
     let app = Router::new()
         .route("/endpoint", get(endpoint_badge))
         .route("/", get(root))
+        .route("/badge/{label}/{status}", get(statik::badge))
+        .route("/badge/{label}/{status}/{color}", get(statik::badge_with_color))
+        .route("/github/release/{owner}/{repo}", get(github::release))
+        .route("/github/issues/{owner}/{repo}", get(github::issues))
+        .route("/github/open-issues/{owner}/{repo}", get(github::open_issues))
+        .route(
+            "/github/closed-issues/{owner}/{repo}",
+            get(github::closed_issues),
+        )
+        .route("/github/checks/{owner}/{repo}", get(github::checks))
+        .route(
+            "/github/checks/{owner}/{repo}/{branch}",
+            get(github::checks_branch),
+        )
+        .route(
+            "/github/checks/{owner}/{repo}/{branch}/{check}",
+            get(github::checks_specific),
+        )
+        .route(
+            "/github/contributors/{owner}/{repo}",
+            get(github::contributors),
+        )
+        .route("/github/license/{owner}/{repo}", get(github::license))
+        .route("/codeberg/release/{owner}/{repo}", get(codeberg::release))
+        .route("/codeberg/issues/{owner}/{repo}", get(codeberg::issues))
+        .route(
+            "/codeberg/open-issues/{owner}/{repo}",
+            get(codeberg::open_issues),
+        )
+        .route(
+            "/codeberg/closed-issues/{owner}/{repo}",
+            get(codeberg::closed_issues),
+        )
+        .route("/codeberg/stars/{owner}/{repo}", get(codeberg::stars))
+        .route("/crates/name/{crate}", get(crates_io::name))
+        .route("/crates/version/{crate}", get(crates_io::version))
+        .route("/crates/info/{crate}", get(crates_io::info))
+        .route("/crates/downloads/{crate}", get(crates_io::downloads))
+        .route(
+            "/crates/downloads/{crate}/latest",
+            get(crates_io::downloads_latest),
+        )
+        .route("/npm/name/{*pkg}", get(npm::name))
+        .route("/npm/version/{*pkg}", get(npm::version))
+        .route("/npm/license/{*pkg}", get(npm::license))
+        .route("/npm/types/{*pkg}", get(npm::types))
+        .route("/pypi/name/{pkg}", get(pypi::name))
+        .route("/pypi/version/{pkg}", get(pypi::version))
+        .route("/pypi/info/{pkg}", get(pypi::info))
+        .route("/pypi/license/{pkg}", get(pypi::license))
         .route("/openapi.json", {
             let doc = openapi.clone();
             get(move || async move { Json(doc) })
         })
         .merge(Scalar::with_url("/docs", openapi));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:1581").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
+        .await
+        .unwrap();
 
-    info!("Server running on http://0.0.0.0:1581");
-    info!("API documentation available at http://0.0.0.0:1581/docs");
+    info!("Server running on http://0.0.0.0:{port}");
+    info!("API documentation available at http://0.0.0.0:{port}/docs");
     axum::serve(listener, app).await.unwrap();
 }
