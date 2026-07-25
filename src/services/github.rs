@@ -52,9 +52,7 @@ async fn issue_count(owner: &str, repo: &str, state: Option<&str>) -> Option<u64
     if let Some(state) = state {
         query.push_str(&format!("+state:{state}"));
     }
-    get_json(&format!("{API}/search/issues?q={query}&per_page=1"))
-        .await?["total_count"]
-        .as_u64()
+    get_json(&format!("{API}/search/issues?q={query}&per_page=1")).await?["total_count"].as_u64()
 }
 
 #[utoipa::path(
@@ -82,7 +80,11 @@ pub async fn open_issues(
     Path(OwnerRepo { owner, repo }): Path<OwnerRepo>,
     Query(q): Query<BadgeQuery>,
 ) -> Response<String> {
-    render::count_badge(&q, "open issues", issue_count(&owner, &repo, Some("open")).await)
+    render::count_badge(
+        &q,
+        "open issues",
+        issue_count(&owner, &repo, Some("open")).await,
+    )
 }
 
 #[utoipa::path(
@@ -223,11 +225,13 @@ pub async fn contributors(
 ) -> Response<String> {
     // per_page=1 + the rel="last" page number in the Link header gives the
     // exact contributor count without paging through the whole list.
-    let resp = request(&format!("{API}/repos/{owner}/{repo}/contributors?per_page=1"))
-        .send()
-        .await
-        .ok()
-        .filter(|r| r.status().is_success());
+    let resp = request(&format!(
+        "{API}/repos/{owner}/{repo}/contributors?per_page=1"
+    ))
+    .send()
+    .await
+    .ok()
+    .filter(|r| r.status().is_success());
     let Some(resp) = resp else {
         return render::error_badge(&q, "github");
     };

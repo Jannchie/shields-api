@@ -66,11 +66,13 @@ pub async fn version(Path(krate): Path<String>, Query(q): Query<BadgeQuery>) -> 
     responses((status = 200, description = "Crate name and version badge", content_type = "image/svg+xml"))
 )]
 pub async fn info(Path(krate): Path<String>, Query(q): Query<BadgeQuery>) -> Response<String> {
-    let info = get_json_url(format!("{API}/crates/{krate}")).await.and_then(|v| {
-        let name = v["crate"]["name"].as_str()?;
-        let num = latest_version(&v["versions"])?["num"].as_str()?;
-        Some(format!("{name} v{num}"))
-    });
+    let info = get_json_url(format!("{API}/crates/{krate}"))
+        .await
+        .and_then(|v| {
+            let name = v["crate"]["name"].as_str()?;
+            let num = latest_version(&v["versions"])?["num"].as_str()?;
+            Some(format!("{name} v{num}"))
+        });
     render::text_badge(&q, "crates.io", "crates.io", info)
 }
 

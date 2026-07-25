@@ -13,7 +13,9 @@ const API: &str = "https://codeberg.org/api/v1";
 
 fn request(url: &str) -> reqwest::RequestBuilder {
     static TOKEN: LazyLock<Option<String>> = LazyLock::new(|| {
-        std::env::var("CODEBERG_TOKEN").ok().filter(|t| !t.is_empty())
+        std::env::var("CODEBERG_TOKEN")
+            .ok()
+            .filter(|t| !t.is_empty())
     });
     let mut rb = http().get(url);
     if let Some(token) = TOKEN.as_deref() {
