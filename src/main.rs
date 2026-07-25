@@ -3,6 +3,7 @@ mod render;
 mod services;
 
 use axum::{Json, Router, extract::Query, http::StatusCode, response::Response, routing::get};
+use render::BadgeQuery;
 use serde::{Deserialize, Serialize};
 use services::{codeberg, crates_io, github, npm, pypi, statik};
 use tracing::{debug, error, info};
@@ -42,33 +43,39 @@ struct ShieldsSchema {
 }
 
 impl ShieldsSchema {
-    fn to_badge_svg(&self) -> String {
-        let mut badge = render::builder_for_style(self.style.as_deref());
+    /// Render the badge this document describes. Query parameters win over the
+    /// document, the same precedence every other badge route uses.
+    fn to_badge_svg(&self, q: &BadgeQuery) -> String {
+        let mut badge = render::builder_for_style(q.style.as_deref().or(self.style.as_deref()));
 
-        badge.label(&self.label).message(&self.message);
-
-        if let Some(label_color) = &self.label_color {
-            badge.label_color(label_color);
-        }
+        badge
+            .label(q.label.as_deref().unwrap_or(&self.label))
+            .message(&self.message);
 
         // isError only decides the fallback: an explicit color still wins, which
         // is what shields.io does with an error badge that names its own color.
         let error_color = self.is_error.unwrap_or(false).then_some("red");
-        if let Some(message_color) = self.color.as_deref().or(error_color) {
-            badge.message_color(message_color);
+        if let Some(color) = q.color.as_deref().or(self.color.as_deref()).or(error_color) {
+            badge.message_color(color);
         }
 
-        // Priority: logoSvg > namedLogo
-        if let Some(logo_svg) = &self.logo_svg {
-            // For custom SVG, we need to handle it differently
-            // The shields crate might not support custom SVG directly in the builder
-            // We'll pass it as logo parameter anyway and let the library handle it
-            badge.logo(logo_svg);
-        } else if let Some(named_logo) = &self.named_logo {
-            badge.logo(named_logo);
+        if let Some(label_color) = q.label_color.as_deref().or(self.label_color.as_deref()) {
+            badge.label_color(label_color);
         }
 
-        if let Some(logo_color) = &self.logo_color {
+        // Priority: query logo > logoSvg > namedLogo. The shields crate detects
+        // a leading "<svg" and embeds it as a base64 data URI, so custom markup
+        // needs no special handling here.
+        let logo = q
+            .icon
+            .as_deref()
+            .or(self.logo_svg.as_deref())
+            .or(self.named_logo.as_deref());
+        if let Some(logo) = logo {
+            badge.logo(logo);
+        }
+
+        if let Some(logo_color) = q.logo_color.as_deref().or(self.logo_color.as_deref()) {
             badge.logo_color(logo_color);
         }
 
@@ -77,23 +84,16 @@ impl ShieldsSchema {
 }
 
 #[derive(Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 struct EndpointParams {
-    /// API endpoint URL that returns JSON data
+    /// URL returning a shields.io endpoint JSON document
     url: String,
-    /// JSONPath query to extract value from response (e.g., "version" or "data.count")
-    query: Option<String>,
-    /// Text to show on the left side of the badge
-    label: Option<String>,
-    /// Badge color (red, green, blue, yellow, orange, lightgrey, or hex color)
-    color: Option<String>,
-    /// Badge style (flat, plastic, flat-square, social, for-the-badge)
-    style: Option<String>,
 }
 
 #[utoipa::path(
     get,
     path = "/endpoint",
-    params(EndpointParams),
+    params(EndpointParams, BadgeQuery),
     tag = "Badge",
     responses(
         (status = 200, description = "Badge SVG", content_type = "image/svg+xml"),
@@ -102,11 +102,9 @@ struct EndpointParams {
 )]
 async fn endpoint_badge(
     Query(params): Query<EndpointParams>,
+    Query(q): Query<BadgeQuery>,
 ) -> Result<Response<String>, StatusCode> {
-    info!(
-        "Badge request - URL: {}, Query: {:?}, Label: {:?}, Color: {:?}, Style: {:?}",
-        params.url, params.query, params.label, params.color, params.style
-    );
+    info!("Badge request - URL: {}, params: {:?}", params.url, q);
 
     let json_data = fetch::fetch_json(&params.url).await.map_err(|e| {
         error!("Failed to fetch JSON data: {}", e);
@@ -116,48 +114,15 @@ async fn endpoint_badge(
     // journal on every request.
     debug!("API response content: {}", json_data);
 
-    // Check if the response is already a Shields.io schema
-    if let Ok(shields_schema) = serde_json::from_value::<ShieldsSchema>(json_data.clone()) {
-        info!("Response is already Shields.io schema format");
+    let schema: ShieldsSchema = serde_json::from_value(json_data).map_err(|e| {
+        error!("Response is not a valid Shields.io schema format: {}", e);
+        StatusCode::BAD_REQUEST
+    })?;
 
-        // Apply query parameters to override schema values
-        let mut final_schema = shields_schema;
-        if let Some(label) = &params.label {
-            final_schema.label = label.clone();
-        }
-        if let Some(color) = &params.color {
-            final_schema.color = Some(color.clone());
-        }
-        if let Some(style) = &params.style {
-            final_schema.style = Some(style.clone());
-        }
-
-        info!(
-            "Generating badge from schema - Label: '{}', Message: '{}', Color: '{:?}', Style: '{:?}', NamedLogo: '{:?}', LogoSvg: '{:?}'",
-            final_schema.label,
-            final_schema.message,
-            final_schema.color,
-            final_schema.style,
-            final_schema.named_logo,
-            final_schema
-                .logo_svg
-                .as_deref()
-                .map(|s| &s[..50.min(s.len())])
-        );
-
-        let svg_content = final_schema.to_badge_svg();
-
-        info!("Badge generated successfully");
-
-        return Ok(render::svg_response(
-            svg_content,
-            "no-cache, no-store, must-revalidate",
-        ));
-    }
-
-    // If not a Shields.io schema, report an error
-    error!("Response is not a valid Shields.io schema format");
-    Err(StatusCode::BAD_REQUEST)
+    Ok(render::svg_response(
+        schema.to_badge_svg(&q),
+        &q.cache_control(),
+    ))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -355,12 +320,33 @@ mod tests {
     }
 
     #[test]
+    fn query_overrides_the_document() {
+        let doc = schema(serde_json::json!({
+            "schemaVersion": 1, "label": "build", "message": "passing", "color": "green"
+        }));
+        let q = BadgeQuery {
+            label: Some("ci".into()),
+            color: Some("blue".into()),
+            ..Default::default()
+        };
+        let svg = doc.to_badge_svg(&q);
+        assert!(svg.contains("ci"), "query label should win");
+        assert!(!svg.contains("build"), "document label should be replaced");
+    }
+
+    #[test]
+    fn document_is_used_when_the_query_is_silent() {
+        let svg = minimal().to_badge_svg(&BadgeQuery::default());
+        assert!(svg.contains("build") && svg.contains("passing"));
+    }
+
+    #[test]
     fn is_error_colors_the_badge_red() {
         let err = schema(serde_json::json!({
             "schemaVersion": 1, "label": "build", "message": "failing", "isError": true
         }));
-        let error_svg = err.to_badge_svg();
-        let plain_svg = minimal().to_badge_svg();
+        let error_svg = err.to_badge_svg(&BadgeQuery::default());
+        let plain_svg = minimal().to_badge_svg(&BadgeQuery::default());
         assert_ne!(
             error_svg.contains("#e05d44"),
             plain_svg.contains("#e05d44"),
@@ -375,7 +361,7 @@ mod tests {
             "schemaVersion": 1, "label": "build", "message": "failing",
             "isError": true, "color": "blue"
         }));
-        assert!(!doc.to_badge_svg().contains("#e05d44"));
+        assert!(!doc.to_badge_svg(&BadgeQuery::default()).contains("#e05d44"));
     }
 
     /// The document may carry fields this service does not render (logoSize was
@@ -386,6 +372,17 @@ mod tests {
             "schemaVersion": 1, "label": "build", "message": "passing",
             "logoSize": "auto", "cacheSeconds": 3600
         }));
-        assert!(doc.to_badge_svg().contains("passing"));
+        assert!(doc.to_badge_svg(&BadgeQuery::default()).contains("passing"));
+    }
+
+    /// A caller-supplied logoSvg used to be sliced at byte 50 for a log line,
+    /// which panicked when byte 50 landed inside a character.
+    #[test]
+    fn multibyte_logo_svg_does_not_panic() {
+        let doc = schema(serde_json::json!({
+            "schemaVersion": 1, "label": "build", "message": "passing",
+            "logoSvg": "x".repeat(48) + "日本語のロゴ"
+        }));
+        doc.to_badge_svg(&BadgeQuery::default());
     }
 }
