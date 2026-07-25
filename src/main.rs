@@ -24,7 +24,7 @@ struct ShieldsSchema {
     /// Default: grey. The left color
     #[serde(rename = "labelColor", skip_serializing_if = "Option::is_none")]
     label_color: Option<String>,
-    /// Default: false. true to treat this as an error badge
+    /// Default: false. true to color the badge red unless `color` says otherwise
     #[serde(rename = "isError", skip_serializing_if = "Option::is_none")]
     is_error: Option<bool>,
     /// One of the simple-icons slugs
@@ -36,9 +36,6 @@ struct ShieldsSchema {
     /// Same meaning as the query string
     #[serde(rename = "logoColor", skip_serializing_if = "Option::is_none")]
     logo_color: Option<String>,
-    /// Make icons adaptively resize by setting auto
-    #[serde(rename = "logoSize", skip_serializing_if = "Option::is_none")]
-    logo_size: Option<String>,
     /// Default: flat. The default template to use
     #[serde(skip_serializing_if = "Option::is_none")]
     style: Option<String>,
@@ -54,7 +51,10 @@ impl ShieldsSchema {
             badge.label_color(label_color);
         }
 
-        if let Some(message_color) = &self.color {
+        // isError only decides the fallback: an explicit color still wins, which
+        // is what shields.io does with an error badge that names its own color.
+        let error_color = self.is_error.unwrap_or(false).then_some("red");
+        if let Some(message_color) = self.color.as_deref().or(error_color) {
             badge.message_color(message_color);
         }
 
@@ -338,4 +338,54 @@ async fn main() {
     info!("Server running on http://0.0.0.0:{port}");
     info!("API documentation available at http://0.0.0.0:{port}/docs");
     axum::serve(listener, app).await.unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn schema(json: serde_json::Value) -> ShieldsSchema {
+        serde_json::from_value(json).unwrap()
+    }
+
+    fn minimal() -> ShieldsSchema {
+        schema(serde_json::json!({
+            "schemaVersion": 1, "label": "build", "message": "passing"
+        }))
+    }
+
+    #[test]
+    fn is_error_colors_the_badge_red() {
+        let err = schema(serde_json::json!({
+            "schemaVersion": 1, "label": "build", "message": "failing", "isError": true
+        }));
+        let error_svg = err.to_badge_svg();
+        let plain_svg = minimal().to_badge_svg();
+        assert_ne!(
+            error_svg.contains("#e05d44"),
+            plain_svg.contains("#e05d44"),
+            "isError should change the message color"
+        );
+        assert!(error_svg.contains("#e05d44"), "isError should render red");
+    }
+
+    #[test]
+    fn an_explicit_color_beats_is_error() {
+        let doc = schema(serde_json::json!({
+            "schemaVersion": 1, "label": "build", "message": "failing",
+            "isError": true, "color": "blue"
+        }));
+        assert!(!doc.to_badge_svg().contains("#e05d44"));
+    }
+
+    /// The document may carry fields this service does not render (logoSize was
+    /// one). Unknown keys must not turn a usable document into a 400.
+    #[test]
+    fn unknown_document_fields_are_ignored() {
+        let doc = schema(serde_json::json!({
+            "schemaVersion": 1, "label": "build", "message": "passing",
+            "logoSize": "auto", "cacheSeconds": 3600
+        }));
+        assert!(doc.to_badge_svg().contains("passing"));
+    }
 }
