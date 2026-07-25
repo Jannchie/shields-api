@@ -39,6 +39,14 @@ impl BadgeQuery {
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_CACHE_SECONDS)
     }
+
+    /// The `cache-control` value for a badge served under these parameters.
+    pub fn cache_control(&self) -> String {
+        format!(
+            "public, max-age={}, no-transform, must-revalidate",
+            self.cache_seconds()
+        )
+    }
 }
 
 /// Map a spacebadgers/shields.io style string to a badge builder.
@@ -89,13 +97,7 @@ pub fn badge(
         builder.logo_color(logo_color);
     }
 
-    svg_response(
-        builder.build(),
-        &format!(
-            "public, max-age={}, no-transform, must-revalidate",
-            q.cache_seconds()
-        ),
-    )
+    svg_response(builder.build(), &q.cache_control())
 }
 
 /// Badge for count endpoints, with spacebadgers' `None` fallback when the
