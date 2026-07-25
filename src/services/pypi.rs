@@ -15,9 +15,11 @@ async fn get_package(pkg: &str) -> Option<Value> {
     get_json_url(format!("{API}/{pkg}/json")).await
 }
 
+/// PyPI project name
 #[utoipa::path(
     get,
     path = "/pypi/name/{pkg}",
+    operation_id = "pypi_name",
     params(("pkg" = String, Path, description = "Package name"), BadgeQuery),
     tag = "PyPI",
     responses((status = 200, description = "Package name badge", content_type = "image/svg+xml"))
@@ -29,9 +31,11 @@ pub async fn name(Path(pkg): Path<String>, Query(q): Query<BadgeQuery>) -> Respo
     render::text_badge(&q, "pypi", "pypi", name)
 }
 
+/// Latest PyPI version
 #[utoipa::path(
     get,
     path = "/pypi/version/{pkg}",
+    operation_id = "pypi_version",
     params(("pkg" = String, Path, description = "Package name"), BadgeQuery),
     tag = "PyPI",
     responses((status = 200, description = "Latest version badge", content_type = "image/svg+xml"))
@@ -43,9 +47,11 @@ pub async fn version(Path(pkg): Path<String>, Query(q): Query<BadgeQuery>) -> Re
     render::text_badge(&q, "pypi", "pypi", version)
 }
 
+/// PyPI project name and version
 #[utoipa::path(
     get,
     path = "/pypi/info/{pkg}",
+    operation_id = "pypi_info",
     params(("pkg" = String, Path, description = "Package name"), BadgeQuery),
     tag = "PyPI",
     responses((status = 200, description = "Package name and version badge", content_type = "image/svg+xml"))
@@ -59,9 +65,11 @@ pub async fn info(Path(pkg): Path<String>, Query(q): Query<BadgeQuery>) -> Respo
     render::text_badge(&q, "pypi", "pypi", info)
 }
 
+/// PyPI project license
 #[utoipa::path(
     get,
     path = "/pypi/license/{pkg}",
+    operation_id = "pypi_license",
     params(("pkg" = String, Path, description = "Package name"), BadgeQuery),
     tag = "PyPI",
     responses((status = 200, description = "License badge", content_type = "image/svg+xml"))

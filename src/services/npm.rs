@@ -32,9 +32,11 @@ fn types_package_name(pkg: &str) -> String {
     }
 }
 
+/// npm package name
 #[utoipa::path(
     get,
     path = "/npm/name/{pkg}",
+    operation_id = "npm_name",
     params(
         ("pkg" = String, Path, description = "Package name, including the @org/ scope for scoped packages"),
         BadgeQuery,
@@ -49,9 +51,11 @@ pub async fn name(Path(pkg): Path<String>, Query(q): Query<BadgeQuery>) -> Respo
     render::text_badge(&q, "npm", "npm", name)
 }
 
+/// Latest npm version
 #[utoipa::path(
     get,
     path = "/npm/version/{pkg}",
+    operation_id = "npm_version",
     params(
         ("pkg" = String, Path, description = "Package name, including the @org/ scope for scoped packages"),
         BadgeQuery,
@@ -66,9 +70,11 @@ pub async fn version(Path(pkg): Path<String>, Query(q): Query<BadgeQuery>) -> Re
     render::text_badge(&q, "npm", "npm", version)
 }
 
+/// npm package license
 #[utoipa::path(
     get,
     path = "/npm/license/{pkg}",
+    operation_id = "npm_license",
     params(
         ("pkg" = String, Path, description = "Package name, including the @org/ scope for scoped packages"),
         BadgeQuery,
@@ -83,9 +89,11 @@ pub async fn license(Path(pkg): Path<String>, Query(q): Query<BadgeQuery>) -> Re
     render::license_badge(&q, license_text(&data), None)
 }
 
+/// TypeScript types for an npm package
 #[utoipa::path(
     get,
     path = "/npm/types/{pkg}",
+    operation_id = "npm_types",
     params(
         ("pkg" = String, Path, description = "Package name, including the @org/ scope for scoped packages"),
         BadgeQuery,

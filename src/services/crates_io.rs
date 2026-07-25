@@ -19,9 +19,11 @@ fn latest_version(versions: &Value) -> Option<&Value> {
         .max_by_key(|v| v["updated_at"].as_str().unwrap_or_default())
 }
 
+/// Crate name on crates.io
 #[utoipa::path(
     get,
     path = "/crates/name/{crate}",
+    operation_id = "crates_name",
     params(
         ("crate" = String, Path, description = "Crate name"),
         BadgeQuery,
@@ -36,9 +38,11 @@ pub async fn name(Path(krate): Path<String>, Query(q): Query<BadgeQuery>) -> Res
     render::text_badge(&q, "crates.io", "crates.io", name)
 }
 
+/// Latest crates.io version
 #[utoipa::path(
     get,
     path = "/crates/version/{crate}",
+    operation_id = "crates_version",
     params(
         ("crate" = String, Path, description = "Crate name"),
         BadgeQuery,
@@ -55,9 +59,11 @@ pub async fn version(Path(krate): Path<String>, Query(q): Query<BadgeQuery>) -> 
     render::text_badge(&q, "crates.io", "crates.io", num.map(|n| format!("v{n}")))
 }
 
+/// Crate name and version
 #[utoipa::path(
     get,
     path = "/crates/info/{crate}",
+    operation_id = "crates_info",
     params(
         ("crate" = String, Path, description = "Crate name"),
         BadgeQuery,
@@ -76,9 +82,11 @@ pub async fn info(Path(krate): Path<String>, Query(q): Query<BadgeQuery>) -> Res
     render::text_badge(&q, "crates.io", "crates.io", info)
 }
 
+/// Total crates.io downloads
 #[utoipa::path(
     get,
     path = "/crates/downloads/{crate}",
+    operation_id = "crates_downloads",
     params(
         ("crate" = String, Path, description = "Crate name"),
         BadgeQuery,
@@ -93,9 +101,11 @@ pub async fn downloads(Path(krate): Path<String>, Query(q): Query<BadgeQuery>) -
     render::text_badge(&q, "downloads", "crates.io", count.map(compact_number))
 }
 
+/// Downloads of the latest crates.io version
 #[utoipa::path(
     get,
     path = "/crates/downloads/{crate}/latest",
+    operation_id = "crates_downloads_latest",
     params(
         ("crate" = String, Path, description = "Crate name"),
         BadgeQuery,

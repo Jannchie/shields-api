@@ -28,9 +28,11 @@ async fn get_json(url: &str) -> Option<Value> {
     super::get_json(request(url)).await
 }
 
+/// Latest GitHub release
 #[utoipa::path(
     get,
     path = "/github/release/{owner}/{repo}",
+    operation_id = "github_release",
     params(OwnerRepo, BadgeQuery),
     tag = "GitHub",
     responses((status = 200, description = "Latest release badge", content_type = "image/svg+xml"))
@@ -55,9 +57,11 @@ async fn issue_count(owner: &str, repo: &str, state: Option<&str>) -> Option<u64
     get_json(&format!("{API}/search/issues?q={query}&per_page=1")).await?["total_count"].as_u64()
 }
 
+/// GitHub issue count
 #[utoipa::path(
     get,
     path = "/github/issues/{owner}/{repo}",
+    operation_id = "github_issues",
     params(OwnerRepo, BadgeQuery),
     tag = "GitHub",
     responses((status = 200, description = "Total issues badge", content_type = "image/svg+xml"))
@@ -69,9 +73,11 @@ pub async fn issues(
     render::count_badge(&q, "issues", issue_count(&owner, &repo, None).await)
 }
 
+/// Open GitHub issues
 #[utoipa::path(
     get,
     path = "/github/open-issues/{owner}/{repo}",
+    operation_id = "github_open_issues",
     params(OwnerRepo, BadgeQuery),
     tag = "GitHub",
     responses((status = 200, description = "Open issues badge", content_type = "image/svg+xml"))
@@ -87,9 +93,11 @@ pub async fn open_issues(
     )
 }
 
+/// Closed GitHub issues
 #[utoipa::path(
     get,
     path = "/github/closed-issues/{owner}/{repo}",
+    operation_id = "github_closed_issues",
     params(OwnerRepo, BadgeQuery),
     tag = "GitHub",
     responses((status = 200, description = "Closed issues badge", content_type = "image/svg+xml"))
@@ -158,9 +166,11 @@ async fn checks_badge(
     render::badge(&q, check.unwrap_or("checks"), status, Some(color))
 }
 
+/// GitHub checks on the default branch
 #[utoipa::path(
     get,
     path = "/github/checks/{owner}/{repo}",
+    operation_id = "github_checks",
     params(OwnerRepo, BadgeQuery),
     tag = "GitHub",
     responses((status = 200, description = "Combined checks badge for the default branch", content_type = "image/svg+xml"))
@@ -173,9 +183,11 @@ pub async fn checks(
     checks_badge(&owner, &repo, "HEAD", None, q).await
 }
 
+/// GitHub checks on a branch
 #[utoipa::path(
     get,
     path = "/github/checks/{owner}/{repo}/{branch}",
+    operation_id = "github_checks_branch",
     params(
         ("owner" = String, Path, description = "Repository owner"),
         ("repo" = String, Path, description = "Repository name"),
@@ -192,9 +204,11 @@ pub async fn checks_branch(
     checks_badge(&owner, &repo, &branch, None, q).await
 }
 
+/// A single GitHub check
 #[utoipa::path(
     get,
     path = "/github/checks/{owner}/{repo}/{branch}/{check}",
+    operation_id = "github_checks_specific",
     params(
         ("owner" = String, Path, description = "Repository owner"),
         ("repo" = String, Path, description = "Repository name"),
@@ -212,9 +226,11 @@ pub async fn checks_specific(
     checks_badge(&owner, &repo, &branch, Some(&check), q).await
 }
 
+/// GitHub contributor count
 #[utoipa::path(
     get,
     path = "/github/contributors/{owner}/{repo}",
+    operation_id = "github_contributors",
     params(OwnerRepo, BadgeQuery),
     tag = "GitHub",
     responses((status = 200, description = "Contributor count badge", content_type = "image/svg+xml"))
@@ -263,9 +279,11 @@ fn last_page_from_link_header(link: &str) -> Option<u64> {
         })
 }
 
+/// GitHub repository license
 #[utoipa::path(
     get,
     path = "/github/license/{owner}/{repo}",
+    operation_id = "github_license",
     params(OwnerRepo, BadgeQuery),
     tag = "GitHub",
     responses((status = 200, description = "License badge", content_type = "image/svg+xml"))

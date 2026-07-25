@@ -28,9 +28,11 @@ async fn get_json(url: &str) -> Option<Value> {
     super::get_json(request(url)).await
 }
 
+/// Latest Codeberg release
 #[utoipa::path(
     get,
     path = "/codeberg/release/{owner}/{repo}",
+    operation_id = "codeberg_release",
     params(OwnerRepo, BadgeQuery),
     tag = "Codeberg",
     responses((status = 200, description = "Latest release badge", content_type = "image/svg+xml"))
@@ -70,9 +72,11 @@ async fn issue_count(owner: &str, repo: &str, state: &str) -> Option<u64> {
         .and_then(|v| v.parse().ok())
 }
 
+/// Codeberg issue count
 #[utoipa::path(
     get,
     path = "/codeberg/issues/{owner}/{repo}",
+    operation_id = "codeberg_issues",
     params(OwnerRepo, BadgeQuery),
     tag = "Codeberg",
     responses((status = 200, description = "Total issues badge", content_type = "image/svg+xml"))
@@ -84,9 +88,11 @@ pub async fn issues(
     render::count_badge(&q, "issues", issue_count(&owner, &repo, "all").await)
 }
 
+/// Open Codeberg issues
 #[utoipa::path(
     get,
     path = "/codeberg/open-issues/{owner}/{repo}",
+    operation_id = "codeberg_open_issues",
     params(OwnerRepo, BadgeQuery),
     tag = "Codeberg",
     responses((status = 200, description = "Open issues badge", content_type = "image/svg+xml"))
@@ -98,9 +104,11 @@ pub async fn open_issues(
     render::count_badge(&q, "open issues", issue_count(&owner, &repo, "open").await)
 }
 
+/// Closed Codeberg issues
 #[utoipa::path(
     get,
     path = "/codeberg/closed-issues/{owner}/{repo}",
+    operation_id = "codeberg_closed_issues",
     params(OwnerRepo, BadgeQuery),
     tag = "Codeberg",
     responses((status = 200, description = "Closed issues badge", content_type = "image/svg+xml"))
@@ -116,9 +124,11 @@ pub async fn closed_issues(
     )
 }
 
+/// Codeberg star count
 #[utoipa::path(
     get,
     path = "/codeberg/stars/{owner}/{repo}",
+    operation_id = "codeberg_stars",
     params(OwnerRepo, BadgeQuery),
     tag = "Codeberg",
     responses((status = 200, description = "Star count badge", content_type = "image/svg+xml"))

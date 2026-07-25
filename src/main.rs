@@ -90,9 +90,11 @@ struct EndpointParams {
     url: String,
 }
 
+/// Badge from a custom endpoint URL
 #[utoipa::path(
     get,
     path = "/endpoint",
+    operation_id = "endpoint_badge",
     params(EndpointParams, BadgeQuery),
     tag = "Badge",
     responses(
@@ -143,9 +145,11 @@ struct ApiInfo {
     docs: DocsInfo,
 }
 
+/// API version and documentation links
 #[utoipa::path(
     get,
     path = "/",
+    operation_id = "api_info",
     tag = "Meta",
     responses((status = 200, description = "API version and documentation index", body = ApiInfo))
 )]
