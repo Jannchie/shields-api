@@ -11,16 +11,23 @@ pub mod npm;
 pub mod pypi;
 pub mod statik;
 
+/// How this service identifies itself and how long it waits, shared by every
+/// client it builds. [`crate::fetch`] extends this with its own hardening, so
+/// the identity and timeout stay defined in one place.
+pub fn client_builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .user_agent(concat!(
+            "shields-api/",
+            env!("CARGO_PKG_VERSION"),
+            " (badge service)"
+        ))
+        .timeout(Duration::from_secs(10))
+}
+
 /// Shared HTTP client for all upstream integrations.
 pub fn http() -> &'static reqwest::Client {
     static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
-        reqwest::Client::builder()
-            .user_agent(concat!(
-                "shields-api/",
-                env!("CARGO_PKG_VERSION"),
-                " (badge service)"
-            ))
-            .timeout(Duration::from_secs(10))
+        client_builder()
             .build()
             .expect("failed to build HTTP client")
     });

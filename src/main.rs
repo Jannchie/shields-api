@@ -1,10 +1,11 @@
+mod fetch;
 mod render;
 mod services;
 
 use axum::{Json, Router, extract::Query, http::StatusCode, response::Response, routing::get};
-use services::{codeberg, crates_io, github, npm, pypi, statik};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use services::{codeberg, crates_io, github, npm, pypi, statik};
+use tracing::{debug, error, info};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_scalar::{Scalar, Servable};
 
@@ -107,10 +108,13 @@ async fn endpoint_badge(
         params.url, params.query, params.label, params.color, params.style
     );
 
-    let json_data = fetch_json_data(&params.url).await.map_err(|e| {
+    let json_data = fetch::fetch_json(&params.url).await.map_err(|e| {
         error!("Failed to fetch JSON data: {}", e);
         StatusCode::BAD_REQUEST
     })?;
+    // Debug level: the body is caller-controlled and would otherwise flood the
+    // journal on every request.
+    debug!("API response content: {}", json_data);
 
     // Check if the response is already a Shields.io schema
     if let Ok(shields_schema) = serde_json::from_value::<ShieldsSchema>(json_data.clone()) {
@@ -154,20 +158,6 @@ async fn endpoint_badge(
     // If not a Shields.io schema, report an error
     error!("Response is not a valid Shields.io schema format");
     Err(StatusCode::BAD_REQUEST)
-}
-
-async fn fetch_json_data(url: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    info!("Fetching data from URL: {}", url);
-    let response = services::http().get(url).send().await?;
-    let status = response.status();
-    info!("HTTP response status: {}", status);
-
-    let json: serde_json::Value = response.json().await?;
-    info!(
-        "API response content: {}",
-        serde_json::to_string_pretty(&json)?
-    );
-    Ok(json)
 }
 
 #[derive(Serialize, ToSchema)]
@@ -252,8 +242,7 @@ struct ApiDoc;
 /// Build the OpenAPI document with the server URL taken from the
 /// BASE_URL environment variable (falls back to the local address).
 fn build_openapi(port: u16) -> utoipa::openapi::OpenApi {
-    let base_url =
-        std::env::var("BASE_URL").unwrap_or_else(|_| format!("http://localhost:{port}"));
+    let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| format!("http://localhost:{port}"));
     let mut doc = ApiDoc::openapi();
     doc.servers = Some(vec![utoipa::openapi::Server::new(base_url)]);
     doc
@@ -281,10 +270,16 @@ async fn main() {
         .route("/endpoint", get(endpoint_badge))
         .route("/", get(root))
         .route("/badge/{label}/{status}", get(statik::badge))
-        .route("/badge/{label}/{status}/{color}", get(statik::badge_with_color))
+        .route(
+            "/badge/{label}/{status}/{color}",
+            get(statik::badge_with_color),
+        )
         .route("/github/release/{owner}/{repo}", get(github::release))
         .route("/github/issues/{owner}/{repo}", get(github::issues))
-        .route("/github/open-issues/{owner}/{repo}", get(github::open_issues))
+        .route(
+            "/github/open-issues/{owner}/{repo}",
+            get(github::open_issues),
+        )
         .route(
             "/github/closed-issues/{owner}/{repo}",
             get(github::closed_issues),
